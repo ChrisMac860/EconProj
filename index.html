@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <link rel="icon" href="data:,">
+  <meta charset="utf-8" />
+  <title>Economic Impact Calculator (MVP)</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body{font-family:system-ui,Arial,sans-serif;max-width:980px;margin:24px auto;padding:0 12px}
+    header{display:flex;justify-content:space-between;align-items:end;gap:12px;flex-wrap:wrap}
+    .grid{display:grid;grid-template-columns:320px 1fr;gap:16px}
+    @media(max-width:880px){.grid{grid-template-columns:1fr}}
+    aside,section,.card{border:1px solid #e6e6e6;border-radius:10px}
+    aside{padding:14px}
+    label{display:block;margin:12px 0}
+    input[type="range"]{width:100%}
+    .cards{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+    @media(max-width:880px){.cards{grid-template-columns:1fr 1fr}}
+    .card{padding:10px}
+    .muted{color:#666;font-size:12px}
+    .value{font-size:22px;font-weight:700;margin-top:6px}
+    .bad{color:#b00020}.good{color:#0a7a2a}
+    footer{margin-top:10px;font-size:12px;color:#666}
+  </style>
+  
+</head>
+<body>
+  <header>
+    <h1 style="margin:0">Economic Impact Calculator</h1>
+    <div class="muted">Adjust policy sliders to see monthly impact (£)</div>
+  </header>
+
+  <div class="grid">
+    <aside>
+      <h3>Inputs</h3>
+
+      <label>Region
+        <select id="region">
+          <option>England</option>
+          <option>Wales</option>
+          <option>Scotland</option>
+          <option selected>Northern Ireland</option>
+        </select>
+      </label>
+
+      <label>Interest rate change (pp): <span id="rOut">+1.00</span>
+        <input id="deltaRate" type="range" min="-2" max="5" step="0.05" value="1.00" />
+      </label>
+
+      <label>Council tax change (%): <span id="ctOut">0.0%</span>
+        <input id="deltaCT" type="range" min="-10" max="20" step="0.5" value="0" />
+      </label>
+
+      <label>Rent change (%): <span id="rentOut">0.0%</span>
+        <input id="deltaRent" type="range" min="-10" max="20" step="0.5" value="0" />
+      </label>
+
+      <hr style="margin:14px 0;border:none;border-top:1px solid #eee">
+      <h4 style="margin:4px 0 8px">Renter</h4>
+      <label>Monthly rent (£)
+        <input id="rentMonthly" type="number" value="852" min="0" step="10" style="width:100%">
+      </label>
+
+      <hr style="margin:14px 0;border:none;border-top:1px solid #eee">
+      <h4 style="margin:4px 0 8px">Homeowner details</h4>
+
+      <label>Mortgage balance (£)
+        <input id="hoBal" type="number" value="200000" min="0" step="1000" style="width:100%">
+      </label>
+
+      <label>Current rate (% APR)
+        <input id="hoRate" type="number" value="4.9" min="0" step="0.05" style="width:100%">
+      </label>
+
+      <label>Years remaining
+        <input id="hoYears" type="number" value="25" min="1" step="1" style="width:100%">
+      </label>
+
+      <label>Product
+        <select id="hoProd" style="width:100%">
+          <option value="svr" selected>SVR (α = 0.5)</option>
+          <option value="tracker">Tracker (α = 1.0)</option>
+          <option value="fixed">Fixed (α = 0.0)</option>
+        </select>
+      </label>
+
+      <hr style="margin:14px 0;border:none;border-top:1px solid #eee">
+      <h4 style="margin:4px 0 8px">Saver/Owner</h4>
+
+      <label>Savings (£)
+        <input id="woSavings" type="number" value="150000" min="0" step="1000" style="width:100%">
+      </label>
+
+      <details>
+        <summary>Assumptions</summary>
+          <ul class="muted">
+            <li><strong>Renter</strong>: pays average regional rent, no mortgage, no savings. Council tax is assumed to be paid by the tenant.</li>
+            <li><strong>Homeowner</strong>: has a mortgage (balance, rate, and years editable) and small savings. Council tax is assumed to be paid by the owner.</li>
+            <li><strong>Saver/Owner</strong>: mortgage-free homeowner with significant savings. The number shown is the change in monthly deposit interest from rate changes, assuming partial pass-through.</li>
+            <li><strong>Average household</strong>: a stylised mix of renter and homeowner, based on median income. The “renting share” slider controls how renter-like vs owner-like this group is.</li>
+            <li><strong>Pass-through rates</strong>: tracker α = 1.0; SVR α = 0.5; fixed α = 0 (until refix). Deposit pass-through β = 0.6.</li>
+            <li><strong>Defaults</strong>: National averages used for rent, income, and council tax. Regional or band detail not yet included.</li>
+          </ul>
+      </details>
+
+    </aside>
+
+    <main>
+      <div class="cards">
+        <div class="card"><div class="muted">Renter</div><div id="renter" class="value">£0/mo</div><div id="renterNote" class="muted">—</div></div>
+        <div class="card"><div class="muted">Homeowner</div><div id="home" class="value">£0/mo</div><div id="homeNote" class="muted">—</div></div>
+        <div class="card"><div class="muted">Saver/Owner</div><div id="wealth" class="value">£0/mo</div><div id="wealthNote" class="muted">—</div></div>
+        <div class="card"><div class="muted">Average Household</div><div id="avg" class="value">£0/mo</div><div id="avgNote" class="muted">—</div></div>
+      </div>
+
+      <footer>Sources: ONS rents/incomes, BoE Bank Rate, local authorities (council tax/rates). This MVP uses national defaults.</footer>
+    </main>
+  </div>
+
+<script defer>
+async function boot() {
+  // ---- load JSON (relative paths) ----
+  const [pipr, income, tax] = await Promise.all([
+    fetch('data/pipr_levels.json').then(r=>r.json()),
+    fetch('data/income_defaults.json').then(r=>r.json()),
+    fetch('data/tax_baselines.json').then(r=>r.json())
+  ]);
+
+  // ---- helpers (put once, not duplicated) ----
+  const $ = id => document.getElementById(id);
+
+  // currency formatter and display helpers
+  const gbp0 = new Intl.NumberFormat('en-GB', {
+    style: 'currency', currency: 'GBP', maximumFractionDigits: 0
+  });
+
+  // pretty "£X/mo" with sign
+  function fmt(v) {
+    const neg = v < 0;
+    return (neg ? '−' : '') + gbp0.format(Math.abs(v)) + '/mo';
+  }
+
+  // safe text setter
+  function setText(el, t) { if (el) el.textContent = t; }
+
+  // REQUIRE THESE IDs IN HTML:
+  // region, deltaRate, deltaCT, deltaRent,
+  // renter, home, wealth, avg, renterNote, homeNote, wealthNote, avgNote
+  // (optional if you added them): hoBal, hoRate, hoYears, hoProd, woSavings, rentMonthly
+
+  // sanity check: show which IDs are missing (won’t crash)
+  const required = ['region','deltaRate','deltaCT','deltaRent','renter','home','wealth','avg','renterNote','homeNote','wealthNote','avgNote'];
+  const missing = required.filter(id => !$(id));
+  if (missing.length) console.warn('Missing DOM IDs:', missing);
+
+  // ---- baselines from JSON ----
+  const RENT = {
+    "England": pipr?.UK?.England ?? 1399,
+    "Wales": pipr?.UK?.Wales ?? 804,
+    "Scotland": pipr?.UK?.Scotland ?? 999,
+    "Northern Ireland": pipr?.UK?.["Northern Ireland"] ?? 852
+  };
+  const CT = {
+    "England": tax?.England_Band_D_2024_25 ?? 2171,
+    "Wales": tax?.Wales_Band_D_2024_25 ?? 2024,
+    "Scotland": tax?.Scotland_Band_D_avg_2024_25 ?? 1421,
+    "Northern Ireland": tax?.Northern_Ireland_Average_Rates_2024_25 ?? 1180
+  };
+  const INCOME = {
+    poorest: income?.quintiles?.poorest_quintile_median_gbp_per_year ?? 16800,
+    median: income?.quintiles?.median_gbp_per_year ?? 36700,
+    richest: income?.quintiles?.richest_quintile_median_gbp_per_year ?? 71100
+  };
+
+  // maths helpers
+  function monthlyPayment(B, apr, yrs){
+    const n = Math.max(1, Math.round(yrs*12));
+    const rm = apr/12;
+    return rm === 0 ? B/n : B * (rm / (1 - Math.pow(1+rm, -n)));
+  }
+  function deltaMortgage(B, r0, yrs, alpha, dpp){
+    const r1 = r0 + alpha * (dpp/100);
+    return monthlyPayment(B, r1, yrs) - monthlyPayment(B, r0, yrs);
+  }
+  const deltaSavings = (S, dpp, beta=0.6) => S * beta * (dpp/100) / 12;
+  const deltaCouncil  = (ann, pct) => (ann * (pct/100)) / 12;
+
+  function personas(region){
+    // renterMonthly optional input
+    const renterMonthly = parseFloat(val('rentMonthly', String(RENT[region])));
+    const hoBal   = parseFloat(val('hoBal', '200000'));
+    const hoRate  = parseFloat(val('hoRate', '4.9'))/100;  // % -> decimal
+    const hoYears = parseFloat(val('hoYears', '25'));
+    const hoProd  = val('hoProd', 'svr');
+    const alpha   = hoProd === 'tracker' ? 1.0 : hoProd === 'svr' ? 0.5 : 0.0;
+    const woSave  = parseFloat(val('woSavings', '150000'));
+
+    const mix = parseFloat((document.getElementById('avgMix')?.value ?? '30')) / 100;
+    const out = document.getElementById('avgMixOut'); if (out) out.textContent = Math.round(mix*100) + '%';
+
+    return {
+      renter:   { rent: renterMonthly, mortgage:{balance:0,rate:0,years:25,alpha:0}, savings:0,      council: CT[region], income: INCOME.poorest },
+      homeowner:{ rent: 0,             mortgage:{balance:hoBal,rate:hoRate,years:hoYears,alpha},     savings:2000,       council: CT[region], income: INCOME.median },
+      wealthy:  { rent: 0,             mortgage:{balance:0,rate:0,years:25,alpha:0},                 savings:woSave,     council: CT[region], income: INCOME.richest },
+      average:  {
+        rent: RENT[region] * mix,
+        mortgage: { balance: 80000 * (1 - mix), rate: 0.042, years: 18, alpha: 0.5 },
+        savings: 10000,
+        council: CT[region],
+        income: INCOME.median
+      }
+    };
+  }
+
+  // UI refs
+  const els = {
+    region: $('region'), deltaRate: $('deltaRate'), deltaCT: $('deltaCT'), deltaRent: $('deltaRent'),
+    renter: $('renter'), home: $('home'), wealth: $('wealth'), avg: $('avg'),
+    renterNote: $('renterNote'), homeNote: $('homeNote'), wealthNote: $('wealthNote'), avgNote: $('avgNote')
+  };
+
+  let REGION = els.region ? els.region.value : 'Northern Ireland';
+  let P = personas(REGION);
+
+  function impact(p, dR, dCT, dRent){
+    const rentNew = p.rent * (1 + dRent/100);
+    const d_rent = rentNew - p.rent;
+    const m = p.mortgage;
+    const d_mort = deltaMortgage(m.balance, m.rate, m.years, m.alpha, dR);
+    const d_ct = deltaCouncil(p.council, dCT);
+    const d_sav = deltaSavings(p.savings, dR);
+    const delta = -d_rent - d_mort - d_ct + d_sav;
+    return {delta, d_rent, d_mort, d_ct, d_sav};
+  }
+
+  function val(id, fallback) {
+    const el = document.getElementById(id);
+    if (el && el.value !== '') {
+        return el.value;
+    }
+    return fallback;
+}
+
+  function render(){
+    const dR = parseFloat(val('deltaRate', '0'));
+    const dCT = parseFloat(val('deltaCT', '0'));
+    const dRent = parseFloat(val('deltaRent', '0'));
+
+    setText(document.getElementById('rOut'),  (dR>=0?'+':'')+Number(dR).toFixed(2));
+    setText(document.getElementById('ctOut'), Number(dCT).toFixed(1)+'%');
+    setText(document.getElementById('rentOut'), Number(dRent).toFixed(1)+'%');
+
+    P = personas(REGION);
+
+    const R = impact(P.renter, dR, dCT, dRent);
+    const H = impact(P.homeowner, dR, dCT, dRent);
+    const W = impact(P.wealthy, dR, dCT, dRent);
+    const A = impact(P.average, dR, dCT, dRent);
+
+    setText(els.renter, fmt(R.delta));
+    setText(els.home,   fmt(H.delta));
+    setText(els.wealth, fmt(W.delta));
+    setText(els.avg,    fmt(A.delta));
+
+    if (els.renter) els.renter.className = 'value ' + (R.delta<0?'bad':'good');
+    if (els.home)   els.home.className   = 'value ' + (H.delta<0?'bad':'good');
+    if (els.wealth) els.wealth.className = 'value ' + (W.delta<0?'bad':'good');
+    if (els.avg)    els.avg.className    = 'value ' + (A.delta<0?'bad':'good');
+
+    setText(els.renterNote, `Rent £${R.d_rent.toFixed(0)}, CT £${R.d_ct.toFixed(0)}`);
+    setText(els.homeNote,   `Mortgage £${H.d_mort.toFixed(0)}, CT £${H.d_ct.toFixed(0)}`);
+    setText(els.wealthNote, `Savings £${W.d_sav.toFixed(0)}, CT £${W.d_ct.toFixed(0)}`);
+    setText(els.avgNote,    `Mix: Rent £${A.d_rent.toFixed(0)}, Mort £${A.d_mort.toFixed(0)}, CT £${A.d_ct.toFixed(0)}`);
+  }
+
+  // listeners (only attach if element exists)
+  if (els.region) els.region.addEventListener('change', () => { REGION = els.region.value; render(); });
+  ['deltaRate','deltaCT','deltaRent','hoBal','hoRate','hoYears','hoProd','woSavings','rentMonthly','avgMix']
+    .forEach(id => {
+      const el = document.getElementById(id);
+      if (el) ['input','change'].forEach(e => el.addEventListener(e, render));
+    });
+
+  render();
+}
+
+// start after HTML parsed
+window.addEventListener('DOMContentLoaded', () => {
+  boot().catch(err => {
+    console.error(err);
+    alert('Could not load data files. Check /data JSON paths.\n' + err);
+  });
+});
+</script>
+
+
+</body>
+</html>

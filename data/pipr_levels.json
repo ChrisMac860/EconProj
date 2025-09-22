@@ -1,0 +1,22 @@
+{
+  "_meta": {
+    "description": "ONS PIPR rent 'price level' baselines (£, monthly). Based on latest ONS data."
+  },
+  "UK": {
+    "England": 1399,
+    "Wales": 804,
+    "Scotland": 999,
+    "Northern Ireland": 852
+  },
+  "England regions": {
+    "North East": null,
+    "North West": null,
+    "Yorkshire and The Humber": null,
+    "East Midlands": null,
+    "West Midlands": null,
+    "East of England": null,
+    "London": null,
+    "South East": null,
+    "South West": null
+  }
+}

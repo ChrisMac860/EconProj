@@ -1,0 +1,9 @@
+{
+  "_meta": {
+    "description": "Council tax / domestic rates baselines for 2024–25. England/Wales/Scotland = Band D reference; NI = average household rates."
+  },
+  "England_Band_D_2024_25": 2171,
+  "Wales_Band_D_2024_25": 2024,
+  "Scotland_Band_D_avg_2024_25": 1421,
+  "Northern_Ireland_Average_Rates_2024_25": 1180
+}

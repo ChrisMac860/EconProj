@@ -1,0 +1,10 @@
+{
+  "_meta": {
+    "description": "Disposable income defaults, FYE 2024 (UK). Source: ONS household disposable income distribution."
+  },
+  "quintiles": {
+    "poorest_quintile_median_gbp_per_year": 16800,
+    "median_gbp_per_year": 36700,
+    "richest_quintile_median_gbp_per_year": 71100
+  }
+}
