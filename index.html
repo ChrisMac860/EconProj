@@ -19,6 +19,23 @@
     .card{padding:10px}
     .muted{color:#666;font-size:12px}
     .value{font-size:22px;font-weight:700;margin-top:6px}
+    .impactChart{margin-top:16px;padding:12px}
+    .impactChart h3{margin:0 0 10px;font-size:16px}
+    .chartLegend{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+    .legendItem{display:inline-flex;align-items:center;gap:5px}
+    .swatch{width:10px;height:10px;border-radius:2px;display:inline-block}
+    .swatch.rent,.chartSegment.rent{background:#c84c4c}
+    .swatch.mortgage,.chartSegment.mortgage{background:#b00020}
+    .swatch.council,.chartSegment.council{background:#d7893b}
+    .swatch.savings,.chartSegment.savings{background:#0a7a2a}
+    .chartRows{display:grid;gap:10px}
+    .chartRow{display:grid;grid-template-columns:94px 1fr 58px;gap:10px;align-items:center}
+    .chartLabel{font-size:13px;font-weight:600}
+    .chartTrack{height:24px;position:relative;background:#f5f5f5;border:1px solid #eee;border-radius:8px;overflow:hidden}
+    .zeroLine{position:absolute;left:50%;top:0;bottom:0;width:1px;background:#d0d0d0;z-index:2}
+    .chartSegment{position:absolute;top:4px;bottom:4px;border-radius:4px;min-width:2px}
+    .chartNet{text-align:right;font-size:13px;font-weight:700;white-space:nowrap}
+    @media(max-width:520px){.chartRow{grid-template-columns:80px 1fr 48px;gap:8px}.chartLabel,.chartNet{font-size:12px}}
     .bad{color:#b00020}.good{color:#0a7a2a}
     footer{margin-top:10px;font-size:12px;color:#666}
   </style>
@@ -91,6 +108,13 @@
         <input id="woSavings" type="number" value="150000" min="0" step="1000" style="width:100%">
       </label>
 
+      <hr style="margin:14px 0;border:none;border-top:1px solid #eee">
+      <h4 style="margin:4px 0 8px">Average household</h4>
+
+      <label>Renting share: <span id="avgMixOut">30%</span>
+        <input id="avgMix" type="range" min="0" max="100" step="5" value="30" />
+      </label>
+
       <details>
         <summary>Assumptions</summary>
           <ul class="muted">
@@ -112,6 +136,17 @@
         <div class="card"><div class="muted">Saver/Owner</div><div id="wealth" class="value">£0/mo</div><div id="wealthNote" class="muted">—</div></div>
         <div class="card"><div class="muted">Average Household</div><div id="avg" class="value">£0/mo</div><div id="avgNote" class="muted">—</div></div>
       </div>
+
+      <section class="impactChart" aria-labelledby="chartTitle">
+        <h3 id="chartTitle">Monthly impact chart</h3>
+        <div class="chartLegend muted" aria-hidden="true">
+          <span class="legendItem"><span class="swatch rent"></span>Rent</span>
+          <span class="legendItem"><span class="swatch mortgage"></span>Mortgage</span>
+          <span class="legendItem"><span class="swatch council"></span>Council</span>
+          <span class="legendItem"><span class="swatch savings"></span>Savings</span>
+        </div>
+        <div id="impactChartRows" class="chartRows"></div>
+      </section>
 
       <footer>Sources: ONS rents/incomes, BoE Bank Rate, local authorities (council tax/rates). This MVP uses national defaults.</footer>
     </main>
@@ -139,6 +174,13 @@ async function boot() {
     const neg = v < 0;
     return (neg ? '−' : '') + gbp0.format(Math.abs(v)) + '/mo';
   }
+  function fmtSigned(v) {
+    const sign = v > 0 ? '+' : v < 0 ? '−' : '';
+    return sign + gbp0.format(Math.abs(v));
+  }
+  function signClass(v) {
+    return v < -0.5 ? 'bad' : v > 0.5 ? 'good' : '';
+  }
 
   // safe text setter
   function setText(el, t) { if (el) el.textContent = t; }
@@ -149,7 +191,7 @@ async function boot() {
   // (optional if you added them): hoBal, hoRate, hoYears, hoProd, woSavings, rentMonthly
 
   // sanity check: show which IDs are missing (won’t crash)
-  const required = ['region','deltaRate','deltaCT','deltaRent','renter','home','wealth','avg','renterNote','homeNote','wealthNote','avgNote'];
+  const required = ['region','deltaRate','deltaCT','deltaRent','renter','home','wealth','avg','renterNote','homeNote','wealthNote','avgNote','impactChartRows'];
   const missing = required.filter(id => !$(id));
   if (missing.length) console.warn('Missing DOM IDs:', missing);
 
@@ -216,7 +258,8 @@ async function boot() {
   const els = {
     region: $('region'), deltaRate: $('deltaRate'), deltaCT: $('deltaCT'), deltaRent: $('deltaRent'),
     renter: $('renter'), home: $('home'), wealth: $('wealth'), avg: $('avg'),
-    renterNote: $('renterNote'), homeNote: $('homeNote'), wealthNote: $('wealthNote'), avgNote: $('avgNote')
+    renterNote: $('renterNote'), homeNote: $('homeNote'), wealthNote: $('wealthNote'), avgNote: $('avgNote'),
+    impactChartRows: $('impactChartRows')
   };
 
   let REGION = els.region ? els.region.value : 'Northern Ireland';
@@ -231,6 +274,66 @@ async function boot() {
     const d_sav = deltaSavings(p.savings, dR);
     const delta = -d_rent - d_mort - d_ct + d_sav;
     return {delta, d_rent, d_mort, d_ct, d_sav};
+  }
+
+  function renderImpactChart(rows) {
+    if (!els.impactChartRows) return;
+    const maxSide = Math.max(1, ...rows.map(row => {
+      let positive = 0;
+      let negative = 0;
+      row.components.forEach(component => {
+        if (component.value >= 0) positive += component.value;
+        else negative += Math.abs(component.value);
+      });
+      return Math.max(positive, negative);
+    }));
+    els.impactChartRows.replaceChildren();
+
+    rows.forEach(row => {
+      const item = document.createElement('div');
+      item.className = 'chartRow';
+
+      const label = document.createElement('div');
+      label.className = 'chartLabel';
+      label.textContent = row.label;
+      item.appendChild(label);
+
+      const track = document.createElement('div');
+      track.className = 'chartTrack';
+      const zero = document.createElement('span');
+      zero.className = 'zeroLine';
+      track.appendChild(zero);
+
+      let positiveOffset = 0;
+      let negativeOffset = 0;
+      row.components.forEach(component => {
+        const amount = Math.abs(component.value);
+        if (amount < 0.5) return;
+
+        const width = Math.max(2, (amount / maxSide) * 50);
+        const segment = document.createElement('span');
+        segment.className = `chartSegment ${component.key}`;
+        segment.title = `${component.label}: ${fmtSigned(component.value)}/mo`;
+
+        if (component.value >= 0) {
+          segment.style.left = `calc(50% + ${positiveOffset}%)`;
+          positiveOffset += width;
+        } else {
+          segment.style.left = `calc(50% - ${negativeOffset + width}%)`;
+          negativeOffset += width;
+        }
+        segment.style.width = `${width}%`;
+        track.appendChild(segment);
+      });
+      item.appendChild(track);
+
+      const net = document.createElement('div');
+      net.className = `chartNet ${signClass(row.net)}`.trim();
+      net.textContent = fmt(row.net);
+      item.appendChild(net);
+
+      els.impactChartRows.appendChild(item);
+    });
   }
 
   function val(id, fallback) {
@@ -271,6 +374,33 @@ async function boot() {
     setText(els.homeNote,   `Mortgage £${H.d_mort.toFixed(0)}, CT £${H.d_ct.toFixed(0)}`);
     setText(els.wealthNote, `Savings £${W.d_sav.toFixed(0)}, CT £${W.d_ct.toFixed(0)}`);
     setText(els.avgNote,    `Mix: Rent £${A.d_rent.toFixed(0)}, Mort £${A.d_mort.toFixed(0)}, CT £${A.d_ct.toFixed(0)}`);
+
+    renderImpactChart([
+      { label: 'Renter', net: R.delta, components: [
+        { key: 'rent', label: 'Rent', value: -R.d_rent },
+        { key: 'mortgage', label: 'Mortgage', value: -R.d_mort },
+        { key: 'council', label: 'Council', value: -R.d_ct },
+        { key: 'savings', label: 'Savings', value: R.d_sav }
+      ]},
+      { label: 'Homeowner', net: H.delta, components: [
+        { key: 'rent', label: 'Rent', value: -H.d_rent },
+        { key: 'mortgage', label: 'Mortgage', value: -H.d_mort },
+        { key: 'council', label: 'Council', value: -H.d_ct },
+        { key: 'savings', label: 'Savings', value: H.d_sav }
+      ]},
+      { label: 'Saver/Owner', net: W.delta, components: [
+        { key: 'rent', label: 'Rent', value: -W.d_rent },
+        { key: 'mortgage', label: 'Mortgage', value: -W.d_mort },
+        { key: 'council', label: 'Council', value: -W.d_ct },
+        { key: 'savings', label: 'Savings', value: W.d_sav }
+      ]},
+      { label: 'Average', net: A.delta, components: [
+        { key: 'rent', label: 'Rent', value: -A.d_rent },
+        { key: 'mortgage', label: 'Mortgage', value: -A.d_mort },
+        { key: 'council', label: 'Council', value: -A.d_ct },
+        { key: 'savings', label: 'Savings', value: A.d_sav }
+      ]}
+    ]);
   }
 
   // listeners (only attach if element exists)

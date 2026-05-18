@@ -4,9 +4,11 @@
   "description": "Economic Impact Calculator (MVP)",
   "main": "index.html",
   "scripts": {
+    "dev": "vite --host 127.0.0.1",
     "test": "vitest run"
   },
   "devDependencies": {
+    "vite": "^6.4.2",
     "vitest": "^3.2.4"
   },
   "keywords": [],
